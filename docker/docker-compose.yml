@@ -1,25 +1,30 @@
 version: '3.8'
 services:
   broker:
-    build: ../broker
+    build: ./broker
     ports:
       - '8000:80'
     environment:
-      - ANTHROPIC_API_KEY
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
   agent:
-    build: ../agent
+    build: ./agent
     ports:
       - '9000:9000'
     environment:
-      - SENTINEL_BROKER_URL=http://broker:8000/call
+      SENTINEL_BROKER_URL: 'http://broker:80/call'
   telegram:
-    build: ../telegram
+    build: ./telegram
     ports:
       - '8080:8080'
     environment:
-      - TELEGRAM_TOKEN
-      - TELEGRAM_CHAT_ID
+      TELEGRAM_TOKEN: ${SENTINEL_TELEGRAM_TOKEN}
+      TELEGRAM_CHAT_ID: ${SENTINEL_TELEGRAM_CHAT_ID}
   web:
-    build: ../web
+    build: ./web
     ports:
       - '7000:7000'
+    environment:
+      - BROKER_URL=http://broker:80
+networks:
+  default:
+    name: sentinel-net

@@ -1,0 +1,14 @@
+[Unit]
+Description=Sentinel Agent Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sentinel-mvp/agent
+ExecStart=/usr/bin/docker compose up agent
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

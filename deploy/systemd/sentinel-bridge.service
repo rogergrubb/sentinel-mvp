@@ -1,0 +1,14 @@
+[Unit]
+Description=Sentinel Telegram Bridge Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sentinel-mvp/telegram
+ExecStart=/usr/bin/docker compose up telegram
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

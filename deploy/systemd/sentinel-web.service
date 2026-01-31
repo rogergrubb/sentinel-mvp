@@ -1,0 +1,14 @@
+[Unit]
+Description=Sentinel Web Dashboard Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sentinel-mvp/web
+ExecStart=/usr/bin/docker compose up web
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

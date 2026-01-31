@@ -1,0 +1,14 @@
+[Unit]
+Description=Sentinel Broker Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sentinel-mvp/broker
+ExecStart=/usr/bin/docker compose up broker
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
