@@ -5,10 +5,19 @@ import threading
 import time
 
 app = Flask(__name__)
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN','8271199766:AAGXTUl_JgEAvA9IFp2OV5Oh1oozvGATg6c')
-CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID','8390029327')
-BROKER_AGENT_URL = os.environ.get('SENTINEL_AGENT_URL','http://localhost:9000/agent')
+# HARDCODED sentinel bot token (do NOT use env or shared config here)
+TELEGRAM_TOKEN = '8271199766:AAGXTUl_JgEAvA9IFp2OV5Oh1oozvGATg6c'
+# Safety check: refuse to run if someone accidentally pasted the ClawdBot token
+MINIMEEBOT_TOKEN = '8592923136:AAFJfOb8I5R9Zt-dGQSORf0IuWfDSyJAtcQ'  # NEVER use MiniMeeeeeeeBot token - that's ClawdBot's bot
+if TELEGRAM_TOKEN == MINIMEEBOT_TOKEN:
+    raise SystemExit('Refusing to run bridge: TELEGRAM_TOKEN matches MiniMeeeeeeeBot token. NEVER use MiniMeeeeeeeBot token - that is ClawdBot\'s bot.')
+
+CHAT_ID = '8390029327'
+BROKER_AGENT_URL = 'http://localhost:9000/agent'
 LAST_UPDATE_ID_FILE = 'last_update_id.txt'
+
+# Status/watchdog endpoints will be exposed via Flask below
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -47,6 +56,36 @@ def resend_last():
     except Exception as e:
         return {'ok':False,'error':str(e)}
     return {'ok':False,'error':'no output found'}
+
+@app.route('/status', methods=['GET'])
+def status():
+    # Return last processed update id and basic service health
+    last_id = None
+    if os.path.exists(LAST_UPDATE_ID_FILE):
+        try:
+            last_id = int(open(LAST_UPDATE_ID_FILE,'r').read().strip())
+        except Exception:
+            last_id = None
+    # Check agent health
+    agent_ok = False
+    try:
+        r = requests.get('http://localhost:9000/agent', timeout=2)
+        agent_ok = (r.status_code == 405 or r.status_code==200)
+    except Exception:
+        agent_ok = False
+    return {'last_update_id': last_id, 'agent_ok': agent_ok}
+
+@app.route('/watchdog', methods=['POST'])
+def watchdog():
+    # simple health-check and suggestion: ping agent and report status
+    try:
+        r = requests.get('http://localhost:9000/agent', timeout=2)
+        if r.status_code==200 or r.status_code==405:
+            return {'ok':True,'agent_status':'running'}
+    except Exception as e:
+        # not running
+        return {'ok':False,'agent_status':f'not running: {str(e)}'}
+    return {'ok':False,'agent_status':'unknown'}
 
 def send_telegram(msg):
     # Always prefer env, fall back to TOOLS.md
