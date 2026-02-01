@@ -121,9 +121,38 @@ def write_alert(token, mentions, price_info, minted_ago=None):
         json.dump(out,f,indent=2)
     print('WROTE ALERT', path)
     # send via Telegram
-    text = f"🚨 {token} - Early Signal Detected\n{mentions} MoltBook mentions (24h)\nPrice: {price_info} \nDetected: {out['ts']}"
-    ok = send_telegram_alert(text)
-    print('Telegram sent?', ok)
+    # determine signal strength
+    strength = 'LOW'
+    change_val = None
+    try:
+        # price_info may be dict with 'change' as percent string or number
+        if isinstance(price_info, dict):
+            c = price_info.get('change') or price_info.get('priceChange')
+            if isinstance(c, str):
+                try:
+                    change_val = float(c.replace('%','').replace('+',''))
+                except Exception:
+                    change_val = None
+            elif isinstance(c, (int,float)):
+                change_val = float(c)
+    except Exception:
+        change_val = None
+    if mentions >= 5:
+        if change_val is not None and change_val >= 100:
+            strength = 'HIGH'
+        elif change_val is not None and change_val >= 20:
+            strength = 'MEDIUM'
+        else:
+            strength = 'LOW'
+    out['signal_strength'] = strength
+    # prepare message
+    text = f"{ '🚨 ' if strength=='HIGH' else '' }{token} - Early Signal Detected ({strength})\n{mentions} MoltBook mentions (24h)\nPrice: {price_info} \nDetected: {out['ts']}"
+    # send Telegram only for HIGH
+    if strength == 'HIGH':
+        ok = send_telegram_alert(text)
+        print('Telegram sent?', ok)
+    else:
+        print('Not sending Telegram for strength', strength)
     return path
 
 if __name__=='__main__':
