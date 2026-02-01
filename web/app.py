@@ -1,9 +1,18 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os, json, glob, time
 from datetime import datetime, timedelta
 
 app = FastAPI()
+# Add CORS to allow Vercel (or any origin) to fetch data
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 RAW_ROOT = r'C:/Users/Roger/clawd/sentinel/raw'
 
 # Start/stop kept for compatibility
