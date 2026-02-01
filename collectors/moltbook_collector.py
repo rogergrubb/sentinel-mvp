@@ -67,7 +67,10 @@ def normalize_and_store(conn, items):
             pid = str(item.get('id') or item.get('post_id'))
             author = item.get('author', {}).get('name') if isinstance(item.get('author'), dict) else item.get('author')
             text = item.get('content') or item.get('text') or item.get('body')
-            url = item.get('url')
+            # prefer API-provided URL fields, otherwise construct a permalink by id
+            url = item.get('url') or item.get('permalink') or item.get('link')
+            if not url and pid:
+                url = f'https://www.moltbook.com/posts/{pid}'
             submolt = item.get('submolt') or (item.get('submolt',{}) .get('name') if isinstance(item.get('submolt'), dict) else None)
             created = item.get('created_at')
             fetched = datetime.utcnow().isoformat()

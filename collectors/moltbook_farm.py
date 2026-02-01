@@ -61,7 +61,10 @@ def normalize_items(data):
         upvotes = it.get('upvotes') or it.get('score') or 0
         comments = it.get('comments') or it.get('comment_count') or 0
         author = it.get('author',{}) if isinstance(it.get('author'), dict) else it.get('author')
-        url = it.get('url')
+        # prefer API-provided URL fields, otherwise construct a permalink by id
+        url = it.get('url') or it.get('permalink') or it.get('link')
+        if not url and pid:
+            url = f'https://www.moltbook.com/posts/{pid}'
         created = it.get('created_at')
         flagged = [kw for kw in keywords if kw.lower() in (title+content).lower()]
         items.append({'id':pid,'title':title,'content':content,'author':author,'upvotes':upvotes,'comments':comments,'created_at':created,'url':url,'flagged_keywords':flagged})
