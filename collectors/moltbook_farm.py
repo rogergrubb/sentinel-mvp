@@ -9,7 +9,7 @@ from datetime import datetime
 # Config
 BASE_URL = 'https://www.moltbook.com/api/v1'
 SUBMOLT = 'general'
-POLL_INTERVAL = 30 * 60  # 30 minutes
+POLL_INTERVAL = 5 * 60  # 5 minutes (updated from 30m to 5m per request)
 OUT_ROOT = r'C:\Users\Roger\clawd\sentinel\raw'
 TOOLS_PATH = r'C:\Users\Roger\clawd\TOOLS.md'
 TELE_CHAT = '8390029327'
