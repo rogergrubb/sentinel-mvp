@@ -64,7 +64,7 @@ def normalize_items(data):
         url = it.get('url')
         created = it.get('created_at')
         flagged = [kw for kw in keywords if kw.lower() in (title+content).lower()]
-        items.append({'id':pid,'title':title,'author':author,'upvotes':upvotes,'comments':comments,'created_at':created,'url':url,'flagged_keywords':flagged})
+        items.append({'id':pid,'title':title,'content':content,'author':author,'upvotes':upvotes,'comments':comments,'created_at':created,'url':url,'flagged_keywords':flagged})
     return items
 
 def write_json(items):
