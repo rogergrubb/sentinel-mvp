@@ -36,13 +36,10 @@ def fetch_posts(api_key=None):
     if api_key:
         headers['Authorization'] = f'Bearer {api_key}'
     url = f'{BASE_URL}/posts?submolt={SUBMOLT}&sort=new&limit=100'
-    r = requests.get(url, headers=headers, timeout=30)
-    if r.status_code == 200:
-        try:
-            return r.json()
-        except Exception:
-            return None
-    else:
+    try:
+        r = requests.get(url, headers=headers, timeout=30)
+        return r
+    except Exception:
         return None
 
 def normalize_items(data):
@@ -103,25 +100,61 @@ def main():
                 data = fetch_posts(api_key=api_key)
             except Exception:
                 data = None
-        if data is None:
-            # try unauthenticated
-            try:
-                data = fetch_posts(api_key=None)
-            except Exception:
-                data = None
-        if data is None:
+        backoff = POLL_INTERVAL
+        r = None
+        try:
+            r = fetch_posts(api_key=api_key)
+        except Exception:
+            r = None
+        # if fetch returned a requests.Response
+        if r is None:
             print('Fetch failed or no data returned; will retry after interval')
+            time.sleep(backoff)
+            continue
+        # if r is a Response object, check status
+        if hasattr(r, 'status_code'):
+            if r.status_code == 200:
+                try:
+                    data = r.json()
+                except Exception:
+                    data = None
+                if data is None:
+                    print('Parse error; sleeping', backoff)
+                    time.sleep(backoff)
+                    continue
+                items = normalize_items(data)
+                path, count = write_json(items)
+                print(datetime.utcnow().isoformat(), 'WROTE', path, 'items', count)
+                if first:
+                    txt = f'SENTINEL data farm online. First scrape complete. {count} posts captured. Saved to {path}'
+                    ok = send_telegram(tel_token, txt)
+                    print('Telegram sent?', ok)
+                    first = False
+                # reset backoff
+                backoff = POLL_INTERVAL
+            elif r.status_code == 429:
+                # rate limited: respect Retry-After or exponential backoff
+                ra = None
+                try:
+                    ra = int(r.headers.get('Retry-After') or 0)
+                except Exception:
+                    ra = 0
+                if ra and ra > 0:
+                    wait = ra
+                else:
+                    # exponential backoff up to 15 minutes
+                    wait = min(backoff * 2, 15 * 60)
+                print('Rate limited (429). Waiting for', wait, 'seconds')
+                time.sleep(wait)
+                # increase backoff for next time
+                backoff = min(backoff * 2, 15 * 60)
+            else:
+                print('Fetch returned status', r.status_code, 'sleeping', backoff)
+                time.sleep(backoff)
         else:
-            items = normalize_items(data)
-            path, count = write_json(items)
-            print(datetime.utcnow().isoformat(), 'WROTE', path, 'items', count)
-            if first:
-                # notify via Telegram once
-                txt = f'SENTINEL data farm online. First scrape complete. {count} posts captured. Saved to {path}'
-                ok = send_telegram(tel_token, txt)
-                print('Telegram sent?', ok)
-                first = False
-        time.sleep(POLL_INTERVAL)
+            # unexpected return type
+            print('Fetch returned unexpected type; sleeping', backoff)
+            time.sleep(backoff)
 
 if __name__ == '__main__':
     main()
