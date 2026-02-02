@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os, json, glob, time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
 # Add CORS to allow Vercel (or any origin) to fetch data
@@ -110,6 +110,8 @@ def stream_signals(submolt: str = 'general'):
 # C) Export sample data (last N files)
 @app.get('/data/export')
 def data_export(submolt: str = 'general', last: int = 24):
+    
+    
     files = glob.glob(os.path.join(RAW_ROOT, '*', f'moltbook_{submolt}_*.json'))
     files.sort(reverse=True)
     out = []
@@ -133,3 +135,85 @@ def morning_brief():
         except Exception as e:
             print('Failed to send telegram', e)
     return {'ok':True}
+
+
+# New: expose active pumps
+@app.get('/pumps/active')
+def pumps_active():
+    path = r'C:/Users/Roger/clawd/sentinel/alerts/active_pumps.json'
+    if not os.path.exists(path):
+        return JSONResponse({'count':0,'pumps':{}}, status_code=200)
+    try:
+        with open(path,'r',encoding='utf-8') as f:
+            j = json.load(f)
+        return j
+    except Exception as e:
+        return JSONResponse({'error':'read_failed','detail':str(e)}, status_code=500)
+
+
+# New: chart endpoint for symbols (reads daily JSONL files)
+@app.get('/chart/{symbol}')
+def chart_symbol(symbol: str, timeframe: str = '24h'):
+    """Return candle list + simple indicators for symbol and timeframe.
+    timeframe: 1h,4h,24h,7d,30d,all
+    """
+    # normalize symbol
+    sym = symbol.upper().lstrip('$')
+    # compute timeframe cutoff
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    tf = timeframe.lower()
+    if tf == '1h': cutoff = now - timedelta(hours=1)
+    elif tf == '4h': cutoff = now - timedelta(hours=4)
+    elif tf == '24h': cutoff = now - timedelta(hours=24)
+    elif tf in ('7d','1w'): cutoff = now - timedelta(days=7)
+    elif tf in ('30d','1m'): cutoff = now - timedelta(days=30)
+    else: cutoff = datetime.min.replace(tzinfo=timezone.utc)
+
+    prices_root = os.path.join(r'C:\Users\Roger\clawd','sentinel','metrics','prices', sym)
+    candles = []
+    if os.path.isdir(prices_root):
+        for fname in sorted(os.listdir(prices_root)):
+            if not fname.endswith('.jsonl'): continue
+            fpath = os.path.join(prices_root, fname)
+            try:
+                with open(fpath,'r',encoding='utf-8') as fh:
+                    for line in fh:
+                        try:
+                            obj = json.loads(line)
+                            # parse candle_time
+                            ct = None
+                            if 'candle_time' in obj:
+                                try:
+                                    ct = datetime.fromisoformat(obj['candle_time'].replace('Z','+00:00'))
+                                except Exception:
+                                    ct = None
+                            if ct and ct < cutoff:
+                                continue
+                            candles.append(obj)
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+    # compute simple indicators using technical module if available
+    indicators = {}
+    try:
+        import sys as _sys, os as _os
+        collectors_path = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), '..', 'collectors'))
+        if collectors_path not in _sys.path:
+            _sys.path.insert(0, collectors_path)
+        from technical import sma, rsi, price_velocity
+        closes = [ (c['candle_time'], float(c.get('close') or c.get('price') or 0)) for c in candles if (c.get('close') or c.get('price')) ]
+        prices_only = [p for t,p in closes]
+        indicators['sma_10'] = sma(prices_only,10)
+        indicators['sma_30'] = sma(prices_only,30)
+        indicators['rsi'] = rsi(prices_only,14)
+        vel = price_velocity(closes,10)
+        indicators['velocity_pct'] = vel.get('price_pct_per_min')
+        if prices_only:
+            indicators['support'] = min(prices_only)
+            indicators['resistance'] = max(prices_only)
+    except Exception as e:
+        print('indicator calc failed', e)
+
+    return {'symbol': sym, 'timeframe': timeframe, 'candles': candles, 'indicators': indicators, 'signals': []}
+
