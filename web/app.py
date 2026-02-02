@@ -48,6 +48,16 @@ def data_latest(submolt: str = 'general'):
     try:
         with open(f,'r',encoding='utf-8') as fh:
             j = json.load(fh)
+        # attach active pumps if available so dashboards that only request /data/latest can see pumps
+        pumps_path = r'C:/Users/Roger/clawd/sentinel/alerts/active_pumps.json'
+        try:
+            if os.path.exists(pumps_path):
+                with open(pumps_path,'r',encoding='utf-8') as pf:
+                    pumps = json.load(pf)
+                j['active_pumps'] = pumps
+        except Exception:
+            # ignore pump read errors
+            pass
         return j
     except Exception as e:
         return JSONResponse({'error':'read_failed','detail':str(e)}, status_code=500)
