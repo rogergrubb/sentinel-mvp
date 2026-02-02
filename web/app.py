@@ -48,17 +48,36 @@ def data_latest(submolt: str = 'general'):
     try:
         with open(f,'r',encoding='utf-8') as fh:
             j = json.load(fh)
-        # attach active pumps if available so dashboards that only request /data/latest can see pumps
+        # Build standardized response expected by dashboard
+        resp = {}
+        # pumps: load active pumps file if present
+        pumps = {}
         pumps_path = r'C:/Users/Roger/clawd/sentinel/alerts/active_pumps.json'
         try:
             if os.path.exists(pumps_path):
                 with open(pumps_path,'r',encoding='utf-8') as pf:
                     pumps = json.load(pf)
-                j['active_pumps'] = pumps
         except Exception:
-            # ignore pump read errors
-            pass
-        return j
+            pumps = {}
+        resp['pumps'] = pumps
+        # stats: basic stats from the latest scrape
+        posts = j.get('posts', []) if isinstance(j, dict) else []
+        total_posts = len(posts)
+        flagged = sum(1 for p in posts if p.get('flagged_keywords'))
+        resp['stats'] = {
+            'total_posts': total_posts,
+            'signals_detected': flagged,
+            'scraped_at': j.get('scraped_at')
+        }
+        # signals: list of flagged posts (IDs)
+        signals = []
+        for p in posts:
+            if p.get('flagged_keywords'):
+                signals.append({'id': p.get('id'), 'title': p.get('title'), 'flags': p.get('flagged_keywords')})
+        resp['signals'] = signals
+        # include raw posts for drilldown if needed
+        resp['posts'] = posts
+        return resp
     except Exception as e:
         return JSONResponse({'error':'read_failed','detail':str(e)}, status_code=500)
 
