@@ -246,3 +246,97 @@ def chart_symbol(symbol: str, timeframe: str = '24h'):
 
     return {'symbol': sym, 'timeframe': timeframe, 'candles': candles, 'indicators': indicators, 'signals': []}
 
+# New: historical chart + signals endpoint
+@app.get('/chart/{symbol}/history')
+def chart_history(symbol: str, days: int = 2):
+    """Return historical OHLC candles for the past `days` and any recorded signals.
+    Example: /chart/SHIPYARD/history?days=2
+    """
+    sym = symbol.upper().lstrip('$')
+    # compute cutoff based on days
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+    cutoff = now - timedelta(days=days)
+
+    # read candles (JSONL files under metrics/prices/{SYM}/)
+    prices_root = os.path.join(r'C:\Users\Roger\clawd','sentinel','metrics','prices', sym)
+    candles = []
+    if os.path.isdir(prices_root):
+        for fname in sorted(os.listdir(prices_root)):
+            if not fname.endswith('.jsonl') and not fname.endswith('.json'): continue
+            fpath = os.path.join(prices_root, fname)
+            try:
+                with open(fpath,'r',encoding='utf-8') as fh:
+                    if fname.endswith('.jsonl'):
+                        for line in fh:
+                            try:
+                                obj = json.loads(line)
+                                ct = None
+                                if 'candle_time' in obj:
+                                    try:
+                                        ct = datetime.fromisoformat(obj['candle_time'].replace('Z','+00:00'))
+                                    except Exception:
+                                        ct = None
+                                if ct and ct < cutoff:
+                                    continue
+                                candles.append(obj)
+                            except Exception:
+                                continue
+                    else:
+                        # plain json array
+                        try:
+                            arr = json.load(fh)
+                            for obj in arr:
+                                ct = None
+                                if 'time' in obj:
+                                    try:
+                                        ct = datetime.fromisoformat(obj['time'].replace('Z','+00:00'))
+                                    except Exception:
+                                        ct = None
+                                if ct and ct < cutoff:
+                                    continue
+                                candles.append(obj)
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+
+    # read signal history if present and match symbol + cutoff
+    signals_path = r'C:\Users\Roger\clawd\sentinel\history\signal_history.json'
+    signals = []
+    if os.path.exists(signals_path):
+        try:
+            with open(signals_path,'r',encoding='utf-8') as sf:
+                sh = json.load(sf)
+                for s in sh.get('signals',[]):
+                    if s.get('token','').upper() != sym:
+                        continue
+                    try:
+                        ts = datetime.fromisoformat(s.get('timestamp').replace('Z','+00:00'))
+                    except Exception:
+                        continue
+                    if ts < cutoff:
+                        continue
+                    # normalize output shape
+                    signals.append({
+                        'timestamp': s.get('timestamp'),
+                        'type': s.get('type'),
+                        'price': s.get('price_at_signal') or s.get('price') or None,
+                        'reason': '; '.join(s.get('reasons',[])) or s.get('reason') or '' ,
+                        'confidence': s.get('confidence')
+                    })
+        except Exception:
+            signals = []
+
+    # sort candles by time ascending
+    def _get_time(c):
+        for k in ('candle_time','time'):
+            if k in c:
+                try:
+                    return datetime.fromisoformat(c[k].replace('Z','+00:00'))
+                except Exception:
+                    pass
+        return None
+    candles_sorted = sorted(candles, key=lambda x: (_get_time(x) or datetime.min))
+
+    return {'symbol': sym, 'days': days, 'candles': candles_sorted, 'signals': signals}
+
